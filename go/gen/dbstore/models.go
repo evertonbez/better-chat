@@ -31,6 +31,7 @@ type Session struct {
 	UserAgent pgtype.Text        `json:"user_agent"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
 }
 
 type User struct {

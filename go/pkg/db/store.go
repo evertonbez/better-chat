@@ -27,7 +27,7 @@ func (s *Store) ExecTx(ctx context.Context, fn func(*dbstore.Queries) error) err
 		return fmt.Errorf("begin tx: %w", err)
 	}
 
-	defer tx.Rollback(ctx) // no-op after commit
+	defer tx.Rollback(ctx)
 
 	if err := fn(s.Queries.WithTx(tx)); err != nil {
 		return err

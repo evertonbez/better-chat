@@ -6,12 +6,28 @@ package dbstore
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
+	CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error)
+	CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error)
+	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	GetAccountByID(ctx context.Context, id int64) (Account, error)
+	GetAccountByProvider(ctx context.Context, arg GetAccountByProviderParams) (Account, error)
+	GetLiveSessionWithUserByToken(ctx context.Context, token string) (GetLiveSessionWithUserByTokenRow, error)
 	GetSessionByID(ctx context.Context, id int64) (Session, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
+	GetUserByID(ctx context.Context, id int64) (User, error)
+	GetUserByUID(ctx context.Context, uid pgtype.Text) (User, error)
+	ListLiveSessionTokensByUserID(ctx context.Context, userID int64) ([]string, error)
+	ListSessionsByUserID(ctx context.Context, userID int64) ([]Session, error)
+	RefreshSession(ctx context.Context, arg RefreshSessionParams) (Session, error)
+	RevokeSessionByToken(ctx context.Context, token string) (int64, error)
+	RevokeSessionsByUserID(ctx context.Context, userID int64) (int64, error)
+	UpdateAccountPassword(ctx context.Context, arg UpdateAccountPasswordParams) error
+	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 }
 
 var _ Querier = (*Queries)(nil)

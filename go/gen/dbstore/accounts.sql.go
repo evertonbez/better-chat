@@ -7,7 +7,66 @@ package dbstore
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const createAccount = `-- name: CreateAccount :one
+INSERT INTO
+    accounts (
+        provider_id,
+        user_id,
+        password,
+        access_token,
+        refresh_token,
+        id_token,
+        access_token_expires_at,
+        refresh_token_expires_at
+    )
+VALUES
+    ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING
+    id, provider_id, user_id, access_token, refresh_token, id_token, access_token_expires_at, refresh_token_expires_at, password, created_at, updated_at
+`
+
+type CreateAccountParams struct {
+	ProviderID            string             `json:"provider_id"`
+	UserID                int64              `json:"user_id"`
+	Password              pgtype.Text        `json:"password"`
+	AccessToken           pgtype.Text        `json:"access_token"`
+	RefreshToken          pgtype.Text        `json:"refresh_token"`
+	IDToken               pgtype.Text        `json:"id_token"`
+	AccessTokenExpiresAt  pgtype.Timestamptz `json:"access_token_expires_at"`
+	RefreshTokenExpiresAt pgtype.Timestamptz `json:"refresh_token_expires_at"`
+}
+
+func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (Account, error) {
+	row := q.db.QueryRow(ctx, createAccount,
+		arg.ProviderID,
+		arg.UserID,
+		arg.Password,
+		arg.AccessToken,
+		arg.RefreshToken,
+		arg.IDToken,
+		arg.AccessTokenExpiresAt,
+		arg.RefreshTokenExpiresAt,
+	)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.ProviderID,
+		&i.UserID,
+		&i.AccessToken,
+		&i.RefreshToken,
+		&i.IDToken,
+		&i.AccessTokenExpiresAt,
+		&i.RefreshTokenExpiresAt,
+		&i.Password,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
 
 const getAccountByID = `-- name: GetAccountByID :one
 SELECT
@@ -37,4 +96,61 @@ func (q *Queries) GetAccountByID(ctx context.Context, id int64) (Account, error)
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const getAccountByProvider = `-- name: GetAccountByProvider :one
+SELECT
+    id, provider_id, user_id, access_token, refresh_token, id_token, access_token_expires_at, refresh_token_expires_at, password, created_at, updated_at
+FROM
+    accounts a
+WHERE
+    a.user_id = $1
+    AND a.provider_id = $2
+LIMIT
+    1
+`
+
+type GetAccountByProviderParams struct {
+	UserID     int64  `json:"user_id"`
+	ProviderID string `json:"provider_id"`
+}
+
+func (q *Queries) GetAccountByProvider(ctx context.Context, arg GetAccountByProviderParams) (Account, error) {
+	row := q.db.QueryRow(ctx, getAccountByProvider, arg.UserID, arg.ProviderID)
+	var i Account
+	err := row.Scan(
+		&i.ID,
+		&i.ProviderID,
+		&i.UserID,
+		&i.AccessToken,
+		&i.RefreshToken,
+		&i.IDToken,
+		&i.AccessTokenExpiresAt,
+		&i.RefreshTokenExpiresAt,
+		&i.Password,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateAccountPassword = `-- name: UpdateAccountPassword :exec
+UPDATE accounts
+SET
+    password = $3,
+    updated_at = NOW()
+WHERE
+    user_id = $1
+    AND provider_id = $2
+`
+
+type UpdateAccountPasswordParams struct {
+	UserID     int64       `json:"user_id"`
+	ProviderID string      `json:"provider_id"`
+	Password   pgtype.Text `json:"password"`
+}
+
+func (q *Queries) UpdateAccountPassword(ctx context.Context, arg UpdateAccountPasswordParams) error {
+	_, err := q.db.Exec(ctx, updateAccountPassword, arg.UserID, arg.ProviderID, arg.Password)
+	return err
 }

@@ -7,11 +7,97 @@ package dbstore
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const createSession = `-- name: CreateSession :one
+INSERT INTO
+    sessions (token, user_id, expires_at, ip_address, user_agent)
+VALUES
+    ($1, $2, $3, $4, $5)
+RETURNING
+    id, token, user_id, expires_at, ip_address, user_agent, created_at, updated_at, revoked_at
+`
+
+type CreateSessionParams struct {
+	Token     string             `json:"token"`
+	UserID    int64              `json:"user_id"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	IpAddress pgtype.Text        `json:"ip_address"`
+	UserAgent pgtype.Text        `json:"user_agent"`
+}
+
+func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (Session, error) {
+	row := q.db.QueryRow(ctx, createSession,
+		arg.Token,
+		arg.UserID,
+		arg.ExpiresAt,
+		arg.IpAddress,
+		arg.UserAgent,
+	)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.Token,
+		&i.UserID,
+		&i.ExpiresAt,
+		&i.IpAddress,
+		&i.UserAgent,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
+const getLiveSessionWithUserByToken = `-- name: GetLiveSessionWithUserByToken :one
+SELECT
+    s.id, s.token, s.user_id, s.expires_at, s.ip_address, s.user_agent, s.created_at, s.updated_at, s.revoked_at,
+    u.id, u.uid, u.name, u.email, u.email_verified, u.image, u.created_at, u.updated_at
+FROM
+    sessions s
+    JOIN users u ON u.id = s.user_id
+WHERE
+    s.token = $1
+    AND s.revoked_at IS NULL
+LIMIT
+    1
+`
+
+type GetLiveSessionWithUserByTokenRow struct {
+	Session Session `json:"session"`
+	User    User    `json:"user"`
+}
+
+func (q *Queries) GetLiveSessionWithUserByToken(ctx context.Context, token string) (GetLiveSessionWithUserByTokenRow, error) {
+	row := q.db.QueryRow(ctx, getLiveSessionWithUserByToken, token)
+	var i GetLiveSessionWithUserByTokenRow
+	err := row.Scan(
+		&i.Session.ID,
+		&i.Session.Token,
+		&i.Session.UserID,
+		&i.Session.ExpiresAt,
+		&i.Session.IpAddress,
+		&i.Session.UserAgent,
+		&i.Session.CreatedAt,
+		&i.Session.UpdatedAt,
+		&i.Session.RevokedAt,
+		&i.User.ID,
+		&i.User.Uid,
+		&i.User.Name,
+		&i.User.Email,
+		&i.User.EmailVerified,
+		&i.User.Image,
+		&i.User.CreatedAt,
+		&i.User.UpdatedAt,
+	)
+	return i, err
+}
 
 const getSessionByID = `-- name: GetSessionByID :one
 SELECT
-    id, token, user_id, expires_at, ip_address, user_agent, created_at, updated_at
+    id, token, user_id, expires_at, ip_address, user_agent, created_at, updated_at, revoked_at
 FROM
     sessions s
 WHERE
@@ -32,6 +118,149 @@ func (q *Queries) GetSessionByID(ctx context.Context, id int64) (Session, error)
 		&i.UserAgent,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RevokedAt,
 	)
 	return i, err
+}
+
+const listLiveSessionTokensByUserID = `-- name: ListLiveSessionTokensByUserID :many
+SELECT
+    s.token
+FROM
+    sessions s
+WHERE
+    s.user_id = $1
+    AND s.revoked_at IS NULL
+    AND s.expires_at > NOW()
+`
+
+func (q *Queries) ListLiveSessionTokensByUserID(ctx context.Context, userID int64) ([]string, error) {
+	rows, err := q.db.Query(ctx, listLiveSessionTokensByUserID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var token string
+		if err := rows.Scan(&token); err != nil {
+			return nil, err
+		}
+		items = append(items, token)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSessionsByUserID = `-- name: ListSessionsByUserID :many
+SELECT
+    id, token, user_id, expires_at, ip_address, user_agent, created_at, updated_at, revoked_at
+FROM
+    sessions s
+WHERE
+    s.user_id = $1
+ORDER BY
+    s.created_at DESC
+`
+
+func (q *Queries) ListSessionsByUserID(ctx context.Context, userID int64) ([]Session, error) {
+	rows, err := q.db.Query(ctx, listSessionsByUserID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Session{}
+	for rows.Next() {
+		var i Session
+		if err := rows.Scan(
+			&i.ID,
+			&i.Token,
+			&i.UserID,
+			&i.ExpiresAt,
+			&i.IpAddress,
+			&i.UserAgent,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.RevokedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const refreshSession = `-- name: RefreshSession :one
+UPDATE sessions
+SET
+    expires_at = $2,
+    updated_at = NOW()
+WHERE
+    token = $1
+    AND revoked_at IS NULL
+RETURNING
+    id, token, user_id, expires_at, ip_address, user_agent, created_at, updated_at, revoked_at
+`
+
+type RefreshSessionParams struct {
+	Token     string             `json:"token"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) RefreshSession(ctx context.Context, arg RefreshSessionParams) (Session, error) {
+	row := q.db.QueryRow(ctx, refreshSession, arg.Token, arg.ExpiresAt)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.Token,
+		&i.UserID,
+		&i.ExpiresAt,
+		&i.IpAddress,
+		&i.UserAgent,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
+const revokeSessionByToken = `-- name: RevokeSessionByToken :execrows
+UPDATE sessions
+SET
+    revoked_at = NOW(),
+    updated_at = NOW()
+WHERE
+    token = $1
+    AND revoked_at IS NULL
+`
+
+func (q *Queries) RevokeSessionByToken(ctx context.Context, token string) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeSessionByToken, token)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const revokeSessionsByUserID = `-- name: RevokeSessionsByUserID :execrows
+UPDATE sessions
+SET
+    revoked_at = NOW(),
+    updated_at = NOW()
+WHERE
+    user_id = $1
+    AND revoked_at IS NULL
+`
+
+func (q *Queries) RevokeSessionsByUserID(ctx context.Context, userID int64) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeSessionsByUserID, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

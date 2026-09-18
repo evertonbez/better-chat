@@ -7,7 +7,48 @@ package dbstore
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const createUser = `-- name: CreateUser :one
+INSERT INTO
+    users (uid, name, email, email_verified, image)
+VALUES
+    ($1, $2, $3, $4, $5)
+RETURNING
+    id, uid, name, email, email_verified, image, created_at, updated_at
+`
+
+type CreateUserParams struct {
+	Uid           pgtype.Text `json:"uid"`
+	Name          pgtype.Text `json:"name"`
+	Email         string      `json:"email"`
+	EmailVerified bool        `json:"email_verified"`
+	Image         pgtype.Text `json:"image"`
+}
+
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, createUser,
+		arg.Uid,
+		arg.Name,
+		arg.Email,
+		arg.EmailVerified,
+		arg.Image,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.Name,
+		&i.Email,
+		&i.EmailVerified,
+		&i.Image,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
 
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT
@@ -22,6 +63,94 @@ LIMIT
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByEmail, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.Name,
+		&i.Email,
+		&i.EmailVerified,
+		&i.Image,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getUserByID = `-- name: GetUserByID :one
+SELECT
+    id, uid, name, email, email_verified, image, created_at, updated_at
+FROM
+    users u
+WHERE
+    u.id = $1
+LIMIT
+    1
+`
+
+func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByID, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.Name,
+		&i.Email,
+		&i.EmailVerified,
+		&i.Image,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getUserByUID = `-- name: GetUserByUID :one
+SELECT
+    id, uid, name, email, email_verified, image, created_at, updated_at
+FROM
+    users u
+WHERE
+    u.uid = $1
+LIMIT
+    1
+`
+
+func (q *Queries) GetUserByUID(ctx context.Context, uid pgtype.Text) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByUID, uid)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Uid,
+		&i.Name,
+		&i.Email,
+		&i.EmailVerified,
+		&i.Image,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateUser = `-- name: UpdateUser :one
+UPDATE users
+SET
+    name = COALESCE($1, name),
+    image = COALESCE($2, image),
+    updated_at = NOW()
+WHERE
+    id = $3
+RETURNING
+    id, uid, name, email, email_verified, image, created_at, updated_at
+`
+
+type UpdateUserParams struct {
+	Name  pgtype.Text `json:"name"`
+	Image pgtype.Text `json:"image"`
+	ID    int64       `json:"id"`
+}
+
+func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUser, arg.Name, arg.Image, arg.ID)
 	var i User
 	err := row.Scan(
 		&i.ID,

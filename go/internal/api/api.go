@@ -6,11 +6,11 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"evertonbez/better-chat/internal/api/middleware"
 	"evertonbez/better-chat/internal/api/routes"
 	"evertonbez/better-chat/pkg/db"
 
@@ -29,7 +29,9 @@ type APIConfig struct {
 }
 
 func New(cfg *APIConfig) *fiber.App {
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		ErrorHandler: middleware.ErrorHandler,
+	})
 
 	app.Use(requestid.New())
 	app.Use(helmet.New())
@@ -43,6 +45,9 @@ func New(cfg *APIConfig) *fiber.App {
 func Start(cfg *APIConfig) {
 	app := New(cfg)
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	srv := &fasthttp.Server{
 		Handler: app.Handler(),
 	}
@@ -53,13 +58,11 @@ func Start(cfg *APIConfig) {
 		}
 	}()
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	<-ctx.Done()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := srv.ShutdownWithContext(ctx); err != nil {
+	if err := srv.ShutdownWithContext(shutdownCtx); err != nil {
 		log.Fatal("Server shutdowns:", err)
 	}
 
