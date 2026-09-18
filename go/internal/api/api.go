@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"evertonbez/better-chat/internal/api/routes"
 	"evertonbez/better-chat/pkg/db"
 
 	"github.com/gofiber/fiber/v3"
@@ -34,7 +35,7 @@ func New(cfg *APIConfig) *fiber.App {
 	app.Use(helmet.New())
 	app.Use(recover.New())
 
-	// routes.New(cfg.Store, cfg.Cache).InitV1(app)
+	routes.New(cfg.Store, cfg.Cache).InitV1(app)
 
 	return app
 }

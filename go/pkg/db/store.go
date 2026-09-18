@@ -4,20 +4,24 @@ import (
 	"context"
 	"fmt"
 
+	"evertonbez/better-chat/gen/dbstore"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Store struct {
+	*dbstore.Queries
 	pool *pgxpool.Pool
 }
 
 func NewStore(pool *pgxpool.Pool) *Store {
 	return &Store{
-		pool: pool,
+		Queries: dbstore.New(pool),
+		pool:    pool,
 	}
 }
 
-func (s *Store) ExecTx(ctx context.Context, fn func() error) error {
+func (s *Store) ExecTx(ctx context.Context, fn func(*dbstore.Queries) error) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -25,7 +29,7 @@ func (s *Store) ExecTx(ctx context.Context, fn func() error) error {
 
 	defer tx.Rollback(ctx) // no-op after commit
 
-	if err := fn(); err != nil {
+	if err := fn(s.Queries.WithTx(tx)); err != nil {
 		return err
 	}
 

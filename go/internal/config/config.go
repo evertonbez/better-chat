@@ -19,7 +19,7 @@ func Load(env string) {
 
 	viper.SetDefault("ENV", "develpment")
 	viper.SetDefault("PORT", "3000")
-	viper.SetDefault("NAME", "module_transfer")
+	viper.SetDefault("NAME", "module_api")
 	viper.SetDefault("DATABASE_URL", "postgres://postgres:potgres@localhost:5433/goproj")
 	viper.SetDefault("REDIS_URL", "redis://localhost:6379")
 
