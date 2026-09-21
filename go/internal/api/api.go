@@ -23,9 +23,10 @@ import (
 )
 
 type APIConfig struct {
-	Store *db.Store
-	Port  string
-	Cache *redis.Client
+	Logger *slog.Logger
+	Store  *db.Store
+	Port   string
+	Cache  *redis.Client
 }
 
 func New(cfg *APIConfig) *fiber.App {
@@ -66,5 +67,5 @@ func Start(cfg *APIConfig) {
 		log.Fatal("Server shutdowns:", err)
 	}
 
-	slog.Info("server stopped")
+	cfg.Logger.Info("server stopped")
 }

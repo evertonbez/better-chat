@@ -9,36 +9,60 @@ import (
 	"evertonbez/better-chat/internal/config"
 	"evertonbez/better-chat/pkg/cache"
 	"evertonbez/better-chat/pkg/db"
+	"evertonbez/better-chat/pkg/logger"
 )
 
 func main() {
 	config.Load(os.Getenv("ENV"))
 
-	slog.Info("starting API", "port", config.PORT, "env", config.ENV)
+	logOpts := logger.Options{
+		Level:  "info",
+		Format: logger.FormatText,
+		Attrs: []slog.Attr{
+			slog.String("service", config.NAME),
+			slog.String("env", config.ENV),
+		},
+	}
+
+	if config.IsProduction() {
+		logOpts.Format = logger.FormatJSON
+	} else {
+		logOpts.Level = "debug"
+	}
+
+	log, err := logger.New(logOpts)
+	slog.SetDefault(log)
+	if err != nil {
+		slog.Error("could not create logger", "error", err)
+		os.Exit(1)
+	}
+
+	log.Info("starting API", "port", config.PORT, "env", config.ENV)
 
 	ctx := context.Background()
 
 	pool, err := db.New(ctx, config.DATABASE_URL)
 	if err != nil {
-		slog.Error("could not connect to database", "error", err)
+		log.Error("could not connect to database", "error", err)
 		os.Exit(1)
 	}
 
-	slog.Info("database connected", "env", config.ENV)
+	log.Info("database connected", "env", config.ENV)
 
 	c, err := cache.New(ctx, config.REDIS_URL)
 	if err != nil {
-		slog.Error("could not connect to cache client", "error", err)
+		log.Error("could not connect to cache client", "error", err)
 		os.Exit(1)
 	}
 
-	slog.Info("cache connected", "env", config.ENV)
+	log.Info("cache connected", "env", config.ENV)
 
 	defer cache.Close(c)
 
 	api.Start(&api.APIConfig{
-		Store: db.NewStore(pool),
-		Port:  config.PORT,
-		Cache: c,
+		Logger: log,
+		Store:  db.NewStore(pool),
+		Port:   config.PORT,
+		Cache:  c,
 	})
 }
